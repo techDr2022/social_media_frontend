@@ -1,0 +1,133 @@
+import { NextRequest, NextResponse } from "next/server";
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ accountId: string }> }
+) {
+  try {
+    const { accountId } = await params;
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const body = await req.json();
+
+    // Use localhost for backend (server-side routes run on the same machine)
+    // Don't use ngrok URL here - we want to call backend directly
+    const backendUrl = process.env.BACKEND_URL || "http://localhost:3000";
+    
+    if (!accountId) {
+      return NextResponse.json(
+        { error: "Account ID is required" },
+        { status: 400 }
+      );
+    }
+
+    console.log(`[Instagram API] Proxying to: ${backendUrl}/instagram/post/${accountId}`);
+    
+    let response;
+    try {
+      response = await fetch(`${backendUrl}/instagram/post/${accountId}`, {
+        method: "POST",
+        headers: {
+          Authorization: authHeader,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+      
+      console.log(`[Instagram API] Backend response status: ${response.status} ${response.statusText}`);
+      console.log(`[Instagram API] Backend response headers:`, Object.fromEntries(response.headers.entries()));
+    } catch (fetchError: any) {
+      console.error('[Instagram API] Fetch error:', fetchError);
+      return NextResponse.json(
+        { error: `Failed to connect to backend: ${fetchError.message}. Is the backend running on ${backendUrl}?` },
+        { status: 503 }
+      );
+    }
+
+    // Read response as text first (we can only read the stream once)
+    let responseText: string;
+    try {
+      responseText = await response.text();
+      console.log(`[Instagram API] Backend response status: ${response.status}, Content-Type: ${response.headers.get('content-type')}`);
+      console.log('[Instagram API] Backend response text (first 500 chars):', responseText.substring(0, 500));
+      
+      // Check if response is HTML (error page)
+      if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
+        console.error('[Instagram API] Backend returned HTML instead of JSON - this should not happen!');
+        return NextResponse.json(
+          { 
+            error: `Backend returned HTML error page (${response.status}). This indicates a NestJS error. Check backend logs.`,
+            rawResponse: responseText.substring(0, 500)
+          },
+          { status: 500 }
+        );
+      }
+    } catch (textError: any) {
+      console.error('[Instagram API] Failed to read response text:', textError);
+      return NextResponse.json(
+        { error: `Backend error (${response.status}): Unable to read response` },
+        { status: response.status || 500 }
+      );
+    }
+
+    // Try to parse as JSON
+    let data: any;
+    if (responseText && responseText.trim()) {
+      try {
+        data = JSON.parse(responseText);
+      } catch (jsonError: any) {
+        // Response is not valid JSON - might be HTML error page
+        console.error('[Instagram API] Response is not valid JSON:', jsonError.message);
+        console.error('[Instagram API] Response text:', responseText.substring(0, 500));
+        return NextResponse.json(
+          { 
+            error: `Backend returned non-JSON response (${response.status}): ${responseText.substring(0, 200)}`,
+            rawResponse: responseText.substring(0, 500)
+          },
+          { status: response.status || 500 }
+        );
+      }
+    } else {
+      // Empty response
+      if (!response.ok) {
+        return NextResponse.json(
+          { error: `Backend error (${response.status}): Empty response` },
+          { status: response.status || 500 }
+        );
+      }
+      data = {};
+    }
+
+    if (!response.ok) {
+      const errorMessage = data?.message || data?.error?.message || data?.error || `Failed to post (${response.status})`;
+      
+      console.error('[Instagram API] Backend error response:', {
+        status: response.status,
+        message: data?.message,
+        error: data?.error,
+        fullData: data
+      });
+      
+      return NextResponse.json(
+        { error: errorMessage },
+        { status: response.status }
+      );
+    }
+
+    return NextResponse.json(data);
+  } catch (error: any) {
+    console.error('Instagram post API error:', error);
+    return NextResponse.json(
+      { error: error.message || "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+

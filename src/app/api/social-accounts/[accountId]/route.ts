@@ -1,0 +1,82 @@
+import { NextRequest, NextResponse } from "next/server";
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ accountId: string }> }
+) {
+  try {
+    const { accountId } = await params;
+    const authHeader = req.headers.get("authorization");
+    
+    if (!authHeader) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    if (!accountId) {
+      return NextResponse.json(
+        { error: "Account ID is required" },
+        { status: 400 }
+      );
+    }
+
+    // Use localhost for backend (server-side routes run on the same machine)
+    const backendUrl = process.env.BACKEND_URL || "http://localhost:3000";
+    
+    console.log(`[Social Accounts API] Deleting account: ${accountId}`);
+    
+    let response;
+    try {
+      response = await fetch(`${backendUrl}/social-accounts/${accountId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: authHeader,
+          "Content-Type": "application/json",
+        },
+      });
+    } catch (fetchError: any) {
+      console.error('[Social Accounts API] Fetch error:', fetchError);
+      return NextResponse.json(
+        { error: `Failed to connect to backend: ${fetchError.message}. Is the backend running on ${backendUrl}?` },
+        { status: 503 }
+      );
+    }
+
+    let data;
+    try {
+      const responseText = await response.text();
+      if (!responseText || responseText.trim() === '') {
+        return NextResponse.json(
+          { error: `Server returned empty response (${response.status})` },
+          { status: response.status || 500 }
+        );
+      }
+      data = JSON.parse(responseText);
+    } catch (jsonError: any) {
+      console.error('[Social Accounts API] JSON parse error:', jsonError);
+      return NextResponse.json(
+        { error: `Backend error (${response.status}): Unable to parse response` },
+        { status: response.status || 500 }
+      );
+    }
+
+    if (!response.ok) {
+      const errorMessage = data?.message || data?.error || `Failed to delete account (${response.status})`;
+      return NextResponse.json(
+        { error: errorMessage },
+        { status: response.status }
+      );
+    }
+
+    return NextResponse.json(data);
+  } catch (error: any) {
+    console.error('Social Accounts API delete error:', error);
+    return NextResponse.json(
+      { error: error.message || "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
