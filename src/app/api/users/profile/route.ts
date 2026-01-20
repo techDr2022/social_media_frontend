@@ -11,13 +11,18 @@ export async function PUT(req: NextRequest) {
     }
 
     const body = await req.json();
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
+    // Use NEXT_PUBLIC_API_URL if available, otherwise fallback to other env vars or localhost
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 
+                       process.env.NEXT_PUBLIC_BACKEND_URL || 
+                       process.env.BACKEND_URL || 
+                       "http://localhost:3000";
+    const cleanBackendUrl = backendUrl.replace(/\/$/, '');
     
-    console.log(`[Users Profile API] Proxying to: ${backendUrl}/users/profile`);
+    console.log(`[Users Profile API] Proxying to: ${cleanBackendUrl}/users/profile`);
     
     let response;
     try {
-      response = await fetch(`${backendUrl}/users/profile`, {
+      response = await fetch(`${cleanBackendUrl}/users/profile`, {
         method: "PUT",
         headers: {
           Authorization: authHeader,
@@ -28,7 +33,7 @@ export async function PUT(req: NextRequest) {
     } catch (fetchError: any) {
       console.error('[Users Profile API] Fetch error:', fetchError);
       return NextResponse.json(
-        { error: `Failed to connect to backend: ${fetchError.message}. Is the backend running on ${backendUrl}?` },
+        { error: `Failed to connect to backend: ${fetchError.message}. Is the backend running on ${cleanBackendUrl}?` },
         { status: 503 }
       );
     }

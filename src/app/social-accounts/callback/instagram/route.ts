@@ -25,13 +25,16 @@ export async function GET(req: NextRequest) {
       console.warn("[Instagram Callback] Warning: state parameter is missing. Instagram Login might not return state.");
     }
 
-    // Use localhost for backend (server-side routes run on the same machine)
-    // Don't use ngrok URL here - we want to call backend directly
-    const backendUrl = process.env.BACKEND_URL || "http://localhost:3000";
+    // Use NEXT_PUBLIC_API_URL if available, otherwise fallback to other env vars or localhost
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 
+                       process.env.NEXT_PUBLIC_BACKEND_URL || 
+                       process.env.BACKEND_URL || 
+                       "http://localhost:3000";
+    const cleanBackendUrl = backendUrl.replace(/\/$/, '');
     // Build callback URL with code (required) and state (optional)
     const callbackUrl = state 
-      ? `${backendUrl}/social-accounts/callback/instagram?code=${code}&state=${state}`
-      : `${backendUrl}/social-accounts/callback/instagram?code=${code}`;
+      ? `${cleanBackendUrl}/social-accounts/callback/instagram?code=${code}&state=${state}`
+      : `${cleanBackendUrl}/social-accounts/callback/instagram?code=${code}`;
 
     console.log("[Instagram Callback] Proxying to backend:", callbackUrl);
 

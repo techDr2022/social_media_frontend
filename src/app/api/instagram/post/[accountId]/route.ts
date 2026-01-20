@@ -16,9 +16,12 @@ export async function POST(
 
     const body = await req.json();
 
-    // Use localhost for backend (server-side routes run on the same machine)
-    // Don't use ngrok URL here - we want to call backend directly
-    const backendUrl = process.env.BACKEND_URL || "http://localhost:3000";
+    // Use NEXT_PUBLIC_API_URL if available, otherwise fallback to other env vars or localhost
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 
+                       process.env.NEXT_PUBLIC_BACKEND_URL || 
+                       process.env.BACKEND_URL || 
+                       "http://localhost:3000";
+    const cleanBackendUrl = backendUrl.replace(/\/$/, '');
     
     if (!accountId) {
       return NextResponse.json(
@@ -27,11 +30,11 @@ export async function POST(
       );
     }
 
-    console.log(`[Instagram API] Proxying to: ${backendUrl}/instagram/post/${accountId}`);
+    console.log(`[Instagram API] Proxying to: ${cleanBackendUrl}/instagram/post/${accountId}`);
     
     let response;
     try {
-      response = await fetch(`${backendUrl}/instagram/post/${accountId}`, {
+      response = await fetch(`${cleanBackendUrl}/instagram/post/${accountId}`, {
         method: "POST",
         headers: {
           Authorization: authHeader,
@@ -45,7 +48,7 @@ export async function POST(
     } catch (fetchError: any) {
       console.error('[Instagram API] Fetch error:', fetchError);
       return NextResponse.json(
-        { error: `Failed to connect to backend: ${fetchError.message}. Is the backend running on ${backendUrl}?` },
+        { error: `Failed to connect to backend: ${fetchError.message}. Is the backend running on ${cleanBackendUrl}?` },
         { status: 503 }
       );
     }

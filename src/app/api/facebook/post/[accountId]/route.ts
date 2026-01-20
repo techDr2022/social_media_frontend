@@ -16,7 +16,12 @@ export async function POST(
 
     const body = await req.json();
 
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
+    // Use NEXT_PUBLIC_API_URL if available, otherwise fallback to other env vars or localhost
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 
+                       process.env.NEXT_PUBLIC_BACKEND_URL || 
+                       process.env.BACKEND_URL || 
+                       "http://localhost:3000";
+    const cleanBackendUrl = backendUrl.replace(/\/$/, '');
     
     if (!accountId) {
       return NextResponse.json(
@@ -25,11 +30,11 @@ export async function POST(
       );
     }
 
-    console.log(`[Facebook API] Proxying to: ${backendUrl}/facebook/post/${accountId}`);
+    console.log(`[Facebook API] Proxying to: ${cleanBackendUrl}/facebook/post/${accountId}`);
     
     let response;
     try {
-      response = await fetch(`${backendUrl}/facebook/post/${accountId}`, {
+      response = await fetch(`${cleanBackendUrl}/facebook/post/${accountId}`, {
         method: "POST",
         headers: {
           Authorization: authHeader,
@@ -40,7 +45,7 @@ export async function POST(
     } catch (fetchError: any) {
       console.error('[Facebook API] Fetch error:', fetchError);
       return NextResponse.json(
-        { error: `Failed to connect to backend: ${fetchError.message}. Is the backend running on ${backendUrl}?` },
+        { error: `Failed to connect to backend: ${fetchError.message}. Is the backend running on ${cleanBackendUrl}?` },
         { status: 503 }
       );
     }

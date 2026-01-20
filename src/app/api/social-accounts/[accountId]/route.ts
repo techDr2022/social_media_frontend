@@ -22,14 +22,18 @@ export async function DELETE(
       );
     }
 
-    // Use localhost for backend (server-side routes run on the same machine)
-    const backendUrl = process.env.BACKEND_URL || "http://localhost:3000";
+    // Use NEXT_PUBLIC_API_URL if available, otherwise fallback to other env vars or localhost
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 
+                       process.env.NEXT_PUBLIC_BACKEND_URL || 
+                       process.env.BACKEND_URL || 
+                       "http://localhost:3000";
+    const cleanBackendUrl = backendUrl.replace(/\/$/, '');
     
     console.log(`[Social Accounts API] Deleting account: ${accountId}`);
     
     let response;
     try {
-      response = await fetch(`${backendUrl}/social-accounts/${accountId}`, {
+      response = await fetch(`${cleanBackendUrl}/social-accounts/${accountId}`, {
         method: "DELETE",
         headers: {
           Authorization: authHeader,
@@ -39,7 +43,7 @@ export async function DELETE(
     } catch (fetchError: any) {
       console.error('[Social Accounts API] Fetch error:', fetchError);
       return NextResponse.json(
-        { error: `Failed to connect to backend: ${fetchError.message}. Is the backend running on ${backendUrl}?` },
+        { error: `Failed to connect to backend: ${fetchError.message}. Is the backend running on ${cleanBackendUrl}?` },
         { status: 503 }
       );
     }

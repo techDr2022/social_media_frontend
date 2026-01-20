@@ -23,8 +23,15 @@ export async function POST(
     // Get the form data from the request (this handles large files)
     const formData = await request.formData();
     
+    // Use NEXT_PUBLIC_API_URL if available, otherwise fallback to other env vars or localhost
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 
+                       process.env.NEXT_PUBLIC_BACKEND_URL || 
+                       process.env.BACKEND_URL || 
+                       "http://localhost:3000";
+    const cleanBackendUrl = backendUrl.replace(/\/$/, '');
+    
     // Forward the request to the NestJS backend
-    const backendUrl = `http://localhost:3000/youtube/upload/${accountId}`;
+    const targetUrl = `${cleanBackendUrl}/youtube/upload/${accountId}`;
     
     // Create a new FormData for the backend
     const backendFormData = new FormData();
@@ -39,7 +46,7 @@ export async function POST(
     }
 
     // Forward to backend with proper timeout for large files
-    const response = await fetch(backendUrl, {
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers: {
         Authorization: authHeader,

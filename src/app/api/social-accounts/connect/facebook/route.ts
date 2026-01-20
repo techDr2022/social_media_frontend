@@ -10,14 +10,19 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
+    // Use NEXT_PUBLIC_API_URL if available, otherwise fallback to other env vars or localhost
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 
+                       process.env.NEXT_PUBLIC_BACKEND_URL || 
+                       process.env.BACKEND_URL || 
+                       "http://localhost:3000";
+    const cleanBackendUrl = backendUrl.replace(/\/$/, '');
     
-    console.log(`[Facebook Connect API] Proxying to: ${backendUrl}/social-accounts/connect/facebook`);
+    console.log(`[Facebook Connect API] Proxying to: ${cleanBackendUrl}/social-accounts/connect/facebook`);
     
     let response;
     try {
       // Follow redirects manually to get the OAuth URL
-      response = await fetch(`${backendUrl}/social-accounts/connect/facebook`, {
+      response = await fetch(`${cleanBackendUrl}/social-accounts/connect/facebook`, {
         method: "GET",
         headers: {
           Authorization: authHeader,
@@ -27,7 +32,7 @@ export async function GET(req: NextRequest) {
     } catch (fetchError: any) {
       console.error('[Facebook Connect API] Fetch error:', fetchError);
       return NextResponse.json(
-        { error: `Failed to connect to backend: ${fetchError.message}. Is the backend running on ${backendUrl}?` },
+        { error: `Failed to connect to backend: ${fetchError.message}. Is the backend running on ${cleanBackendUrl}?` },
         { status: 503 }
       );
     }

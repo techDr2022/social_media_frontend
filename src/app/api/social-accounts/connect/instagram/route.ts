@@ -11,11 +11,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
-    const targetUrl = `${backendUrl}/social-accounts/connect/instagram`;
+    // Use NEXT_PUBLIC_API_URL if available, otherwise fallback to other env vars or localhost
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 
+                       process.env.NEXT_PUBLIC_BACKEND_URL || 
+                       process.env.BACKEND_URL || 
+                       "http://localhost:3000";
+    const cleanBackendUrl = backendUrl.replace(/\/$/, '');
+    const targetUrl = `${cleanBackendUrl}/social-accounts/connect/instagram`;
     
     console.log(`[Instagram Connect API] Starting request`);
-    console.log(`[Instagram Connect API] Backend URL: ${backendUrl}`);
+    console.log(`[Instagram Connect API] Backend URL: ${cleanBackendUrl}`);
     console.log(`[Instagram Connect API] Target URL: ${targetUrl}`);
     console.log(`[Instagram Connect API] Has auth header: ${!!authHeader}`);
     
@@ -46,7 +51,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(
         { 
           error: isNetworkError 
-            ? `Cannot connect to backend at ${backendUrl}. Make sure: 1) Backend is running, 2) NEXT_PUBLIC_BACKEND_URL is correct, 3) No firewall blocking. Error: ${errorMessage}`
+            ? `Cannot connect to backend at ${cleanBackendUrl}. Make sure: 1) Backend is running, 2) NEXT_PUBLIC_API_URL is correct, 3) No firewall blocking. Error: ${errorMessage}`
             : `Backend request failed: ${errorMessage}`
         },
         { status: 503 }
