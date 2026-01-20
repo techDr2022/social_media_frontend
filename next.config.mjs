@@ -1,12 +1,22 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Rewrites only work in development (localhost)
+  // In production, we use Next.js API routes that proxy to backend
   async rewrites() {
-    return [
-      {
-        source: "/api/:path*",
-        destination: "http://localhost:3000/:path*",
-      },
-    ];
+    // Only use rewrite in development (when NEXT_PUBLIC_API_URL is not set or is localhost)
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL;
+    const isLocalhost = !apiUrl || apiUrl.includes('localhost');
+    
+    if (isLocalhost) {
+      return [
+        {
+          source: "/api/:path*",
+          destination: "http://localhost:3000/:path*",
+        },
+      ];
+    }
+    // In production, return empty array - API routes will handle it
+    return [];
   },
 };
 
