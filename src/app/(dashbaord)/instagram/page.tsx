@@ -337,13 +337,25 @@ export default function InstagramHubPage() {
                   )}
                 </CardHeader>
                 <CardContent>
-                  <Link
-                    href={`/instagram/post/${acc.id}`}
-                    className="flex items-center text-sm font-medium text-primary group-hover:text-primary/80"
-                  >
-                    Create post
-                    <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
-                  </Link>
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      asChild
+                      variant="default"
+                      className="w-full gap-2"
+                    >
+                      <Link href={`/instagram/${acc.id}`}>
+                        <PenSquare className="h-4 w-4" />
+                        Manage
+                      </Link>
+                    </Button>
+                    <Link
+                      href={`/instagram/post/${acc.id}`}
+                      className="flex items-center justify-center text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                    >
+                      Create post
+                      <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                    </Link>
+                  </div>
                 </CardContent>
               </Card>
             ))}

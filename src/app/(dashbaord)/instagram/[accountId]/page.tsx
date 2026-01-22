@@ -8,20 +8,21 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Facebook, ArrowLeft, Plus, Calendar, Loader2, Image as ImageIcon, Video, X, ChevronLeft, ChevronRight, ExternalLink, Trash2, Check, AlertCircle } from "lucide-react";
+import { Instagram, ArrowLeft, Plus, Calendar, Loader2, Image as ImageIcon, Video, X, ChevronLeft, ChevronRight, ExternalLink, Trash2, Check, AlertCircle } from "lucide-react";
 
-type FacebookAccount = {
+type InstagramAccount = {
   id: string;
   displayName: string;
+  username?: string;
   externalId: string;
   platform: string;
   isActive: boolean;
   createdAt: string;
 };
 
-export default function FacebookAccountPage({ params }: any) {
+export default function InstagramAccountPage({ params }: any) {
   const router = useRouter();
-  const [account, setAccount] = useState<FacebookAccount | null>(null);
+  const [account, setAccount] = useState<InstagramAccount | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [accountId, setAccountId] = useState<string>("");
@@ -85,11 +86,11 @@ export default function FacebookAccountPage({ params }: any) {
         }
 
         const json = await res.json();
-        const facebookAccounts = json.filter(
-          (a: any) => a.platform === "facebook"
+        const instagramAccounts = json.filter(
+          (a: any) => a.platform?.toLowerCase() === "instagram"
         );
         
-        const foundAccount = facebookAccounts.find(
+        const foundAccount = instagramAccounts.find(
           (a: any) => String(a.id).trim() === String(id).trim()
         );
 
@@ -115,7 +116,7 @@ export default function FacebookAccountPage({ params }: any) {
     loadAccount();
   }, [params]);
 
-  // Load all Facebook posts/uploads for this account
+  // Load all Instagram posts/uploads for this account
   async function loadPosts(accId: string) {
     setLoadingPosts(true);
     try {
@@ -126,7 +127,7 @@ export default function FacebookAccountPage({ params }: any) {
         return;
       }
 
-      const res = await fetch(`/api/facebook/posts/${accId}`, {
+      const res = await fetch(`/api/instagram/posts/${accId}`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -154,7 +155,7 @@ export default function FacebookAccountPage({ params }: any) {
   async function deletePost(postId: string) {
     if (!accountId) return;
     
-    if (!confirm('Are you sure you want to delete this post? This will delete it from Facebook and remove it from your history.')) {
+    if (!confirm('Are you sure you want to delete this post? This will remove it from your history. Note: Instagram does not allow deleting published posts via API, so you may need to delete it manually from Instagram.')) {
       return;
     }
 
@@ -169,7 +170,7 @@ export default function FacebookAccountPage({ params }: any) {
         return;
       }
 
-      const res = await fetch(`/api/facebook/posts/${accountId}/${postId}`, {
+      const res = await fetch(`/api/instagram/posts/${accountId}/${postId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -182,11 +183,6 @@ export default function FacebookAccountPage({ params }: any) {
         try {
           const errorData = await res.json();
           errorMessage = errorData?.error || errorData?.message || errorMessage;
-          
-          // Handle "post doesn't exist" case
-          if (res.status === 404 || errorMessage.toLowerCase().includes('not found') || errorMessage.toLowerCase().includes("doesn't exist")) {
-            errorMessage = 'Post does not exist or has already been deleted';
-          }
         } catch {
           errorMessage = `Failed to delete post (${res.status})`;
         }
@@ -199,14 +195,21 @@ export default function FacebookAccountPage({ params }: any) {
       const result = await res.json();
       console.log('✅ Post deleted:', result);
       
-      // Show success toast
-      setToast({ message: 'Post deleted successfully', type: 'success' });
+      // Show success toast with appropriate message
+      const toastMessage = result.message || (result.igDeleted 
+        ? 'Post deleted from Instagram and removed from your history' 
+        : 'Post removed from your history. Note: Instagram does not allow deleting published posts via API.');
+      
+      setToast({ 
+        message: toastMessage, 
+        type: 'success' 
+      });
       
       // Reload posts list
       await loadPosts(accountId);
       
-      // Auto-hide toast after 3 seconds
-      setTimeout(() => setToast(null), 3000);
+      // Auto-hide toast after 5 seconds (longer for informational message)
+      setTimeout(() => setToast(null), 5000);
     } catch (err: any) {
       console.error('Error deleting post:', err);
       const errorMessage = err.message || 'Failed to delete post';
@@ -225,11 +228,11 @@ export default function FacebookAccountPage({ params }: any) {
 
   if (loading) {
     return (
-      <MainLayout title="Loading..." subtitle="Loading Facebook page...">
+      <MainLayout title="Loading..." subtitle="Loading Instagram account...">
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="text-center">
             <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
-            <p className="text-muted-foreground">Loading page...</p>
+            <p className="text-muted-foreground">Loading account...</p>
           </div>
         </div>
       </MainLayout>
@@ -238,15 +241,15 @@ export default function FacebookAccountPage({ params }: any) {
 
   if (error || !account) {
     return (
-      <MainLayout title="Error" subtitle="Failed to load Facebook page">
+      <MainLayout title="Error" subtitle="Failed to load Instagram account">
         <Card className="border-destructive">
           <CardContent className="pt-6">
             <h2 className="text-lg font-semibold text-destructive mb-2">Error</h2>
             <p className="text-destructive mb-4">{error || "Account not found"}</p>
             <Button asChild variant="outline">
-              <Link href="/facebook">
+              <Link href="/instagram">
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Facebook
+                Back to Instagram
               </Link>
             </Button>
           </CardContent>
@@ -258,7 +261,7 @@ export default function FacebookAccountPage({ params }: any) {
   return (
     <MainLayout
       title={account.displayName}
-      subtitle={`Page ID: ${account.externalId}`}
+      subtitle={account.username ? `@${account.username}` : `Account ID: ${account.externalId}`}
     >
       {/* Toast Notification */}
       {toast && (
@@ -289,11 +292,11 @@ export default function FacebookAccountPage({ params }: any) {
       <div className="space-y-6">
         {/* Back Button */}
         <Link
-          href="/facebook"
+          href="/instagram"
           className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to Facebook
+          Back to Instagram
         </Link>
 
         {/* Status Badge */}
@@ -311,8 +314,8 @@ export default function FacebookAccountPage({ params }: any) {
           <Card className="hover:shadow-lg transition-shadow">
             <CardHeader>
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
-                  <Plus className="h-6 w-6 text-primary" />
+                <div className="w-12 h-12 bg-gradient-to-br from-pink-500 to-purple-500 rounded-lg flex items-center justify-center">
+                  <Plus className="h-6 w-6 text-white" />
                 </div>
                 <div>
                   <CardTitle>Post Now</CardTitle>
@@ -322,11 +325,11 @@ export default function FacebookAccountPage({ params }: any) {
             </CardHeader>
             <CardContent>
               <Button
-                onClick={() => router.push(`/facebook/post/${account.id}`)}
-                className="w-full gap-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+                onClick={() => router.push(`/instagram/post/${account.id}`)}
+                className="w-full gap-2 bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600"
                 size="lg"
               >
-                <Facebook className="h-4 w-4" />
+                <Instagram className="h-4 w-4" />
                 Post Now
               </Button>
             </CardContent>
@@ -389,6 +392,7 @@ export default function FacebookAccountPage({ params }: any) {
                     <tbody>
                       {currentPosts.map((post) => {
                         const hasError = post.status === 'failed' && post.errorMessage;
+                        const postUrl = post.permalink || (post.externalPostId ? `https://www.instagram.com/p/${post.externalPostId}/` : null);
                         
                         return (
                           <tr key={post.id} className="border-b hover:bg-secondary/50 transition-colors">
@@ -414,7 +418,7 @@ export default function FacebookAccountPage({ params }: any) {
                                     )
                                   ) : (
                                     <div className="w-full h-full bg-secondary flex items-center justify-center">
-                                      <Facebook className="h-6 w-6 text-muted-foreground" />
+                                      <Instagram className="h-6 w-6 text-muted-foreground" />
                                     </div>
                                   )}
                                   {/* Type Badge */}
@@ -464,15 +468,15 @@ export default function FacebookAccountPage({ params }: any) {
                             ) : (
                               <>
                                 <td className="py-3 px-4">
-                                  {post.externalPostId ? (
+                                  {postUrl ? (
                                     <a
-                                      href={`https://www.facebook.com/${post.externalPostId}`}
+                                      href={postUrl}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="inline-flex items-center gap-2 text-sm text-primary hover:text-primary/80 transition-colors"
                                     >
                                       <ExternalLink className="h-4 w-4" />
-                                      View on Facebook
+                                      View on Instagram
                                     </a>
                                   ) : (
                                     <span className="text-sm text-muted-foreground">—</span>
@@ -481,11 +485,11 @@ export default function FacebookAccountPage({ params }: any) {
                                 
                                 {/* Posted At Column */}
                                 <td className="py-3 px-4">
-                                  {post.scheduledAt ? (
+                                  {post.scheduledAt || post.postedAt ? (
                                     <div className="text-sm text-foreground">
-                                      <div>{new Date(post.scheduledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                                      <div>{(post.postedAt || post.scheduledAt) ? new Date(post.postedAt || post.scheduledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</div>
                                       <div className="text-xs text-muted-foreground mt-1">
-                                        {new Date(post.scheduledAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                        {(post.postedAt || post.scheduledAt) ? new Date(post.postedAt || post.scheduledAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '—'}
                                       </div>
                                     </div>
                                   ) : (
@@ -588,3 +592,4 @@ export default function FacebookAccountPage({ params }: any) {
     </MainLayout>
   );
 }
+

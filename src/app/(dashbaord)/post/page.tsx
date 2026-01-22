@@ -44,7 +44,7 @@ export default function PostPage() {
       title="Create Post"
       subtitle="Select a platform to create a post"
     >
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-5xl mx-auto py-8">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {platforms.map((platform) => {
             const Icon = platform.icon;
@@ -53,7 +53,7 @@ export default function PostPage() {
                 key={platform.id}
                 onClick={() => router.push(platform.route)}
                 className={cn(
-                  "cursor-pointer transition-all duration-200 hover:shadow-lg hover:scale-[1.02]",
+                  "cursor-pointer transition-all duration-200 hover:shadow-lg hover:scale-[1.02] bg-slate-900 border border-slate-800 text-white shadow-sm hover:bg-slate-800",
                   platform.hoverColor
                 )}
               >
@@ -64,8 +64,12 @@ export default function PostPage() {
                   )}>
                     <Icon className="h-6 w-6 text-white" />
                   </div>
-                  <CardTitle>{platform.name}</CardTitle>
-                  <CardDescription>{platform.description}</CardDescription>
+                  <CardTitle className="text-lg font-semibold">
+                    {platform.name}
+                  </CardTitle>
+                  <CardDescription className="text-sm text-slate-300">
+                    {platform.description}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center text-primary text-sm font-medium group">

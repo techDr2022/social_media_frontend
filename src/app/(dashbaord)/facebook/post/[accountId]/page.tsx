@@ -11,7 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Facebook, ArrowLeft, Upload, X, Loader2, Check, Calendar, Image as ImageIcon, Video, Globe } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Facebook, ArrowLeft, Upload, X, Loader2, Check, Calendar, Image as ImageIcon, Video, Globe, Images } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function ImageThumbnail({ imageUrl, fileName }: { imageUrl: string; fileName: string }) {
@@ -110,6 +111,9 @@ export default function FacebookPostPage({ params }: any) {
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string>("");
   const [mediaType, setMediaType] = useState<'photo' | 'video' | null>(null);
+  const [isCarousel, setIsCarousel] = useState(false);
+  const [carouselFiles, setCarouselFiles] = useState<File[]>([]);
+  const [carouselPreviews, setCarouselPreviews] = useState<string[]>([]);
   const [scheduledDateTime, setScheduledDateTime] = useState("");
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -212,6 +216,42 @@ export default function FacebookPostPage({ params }: any) {
   }
 
   function useRecentFile(file: {name: string, url: string, type: string}) {
+    // Handle carousel mode - add to carousel files
+    if (isCarousel) {
+      // Only allow images for carousel
+      if (file.type !== 'photo') {
+        setError('Carousel posts only support images. Please select image files.');
+        return;
+      }
+
+      // Check if already added
+      if (carouselFiles.some(f => (f as any).recentFileUrl === file.url)) {
+        setError('This image is already in the carousel.');
+        return;
+      }
+
+      // Check limit
+      if (carouselFiles.length >= 10) {
+        setError('Carousel posts can have maximum 10 images.');
+        return;
+      }
+
+      // Create fake file object
+      const fakeFile = new File([], file.name, { 
+        type: 'image/jpeg' 
+      });
+      (fakeFile as any).isRecentFile = true;
+      (fakeFile as any).recentFileUrl = file.url;
+
+      // Add to carousel
+      setCarouselFiles([...carouselFiles, fakeFile]);
+      setCarouselPreviews([...carouselPreviews, file.url]);
+      setMediaType('photo');
+      setError('');
+      return;
+    }
+
+    // Handle single file mode
     const detectedType = file.type === 'video' ? 'video' : 'photo';
     setMediaPreview(file.url);
     setMediaType(detectedType);
@@ -226,8 +266,54 @@ export default function FacebookPostPage({ params }: any) {
   }
 
   function handleMediaChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    // Handle carousel mode (multiple files)
+    if (isCarousel) {
+      const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+      
+      if (imageFiles.length === 0) {
+        setError('Carousel posts only support images. Please select image files.');
+        e.target.value = '';
+        return;
+      }
+
+      // Limit to 10 images for carousel (Facebook limit)
+      if (imageFiles.length > 10) {
+        setError(`Carousel posts can have maximum 10 images. You selected ${imageFiles.length}.`);
+        e.target.value = '';
+        return;
+      }
+
+      // Validate file sizes
+      const MAX_SUPABASE_FREE = 50 * 1024 * 1024;
+      const MAX_PHOTO_SIZE = 4 * 1024 * 1024;
+      const invalidFiles = imageFiles.filter(file => file.size > MAX_SUPABASE_FREE || file.size > MAX_PHOTO_SIZE);
+      
+      if (invalidFiles.length > 0) {
+        setError(`Some files are too large. Maximum: 4MB per image for Facebook, 50MB for Supabase.`);
+        e.target.value = '';
+        return;
+      }
+
+      // Create previews
+      const previews: string[] = [];
+      imageFiles.forEach(file => {
+        const url = URL.createObjectURL(file);
+        previews.push(url);
+      });
+
+      setCarouselFiles(imageFiles);
+      setCarouselPreviews(previews);
+      setMediaType('photo');
+      setError('');
+      e.target.value = '';
+      return;
+    }
+
+    // Handle single file mode
+    const file = files[0];
 
     const MAX_PHOTO_SIZE = 4 * 1024 * 1024;
     const MAX_SUPABASE_FREE = 50 * 1024 * 1024;
@@ -282,6 +368,24 @@ export default function FacebookPostPage({ params }: any) {
     setMediaType(null);
   }
 
+  function removeCarouselImage(index: number) {
+    // Revoke the blob URL
+    if (carouselPreviews[index] && carouselPreviews[index].startsWith('blob:')) {
+      URL.revokeObjectURL(carouselPreviews[index]);
+    }
+    
+    // Remove from arrays
+    const newFiles = carouselFiles.filter((_, i) => i !== index);
+    const newPreviews = carouselPreviews.filter((_, i) => i !== index);
+    
+    setCarouselFiles(newFiles);
+    setCarouselPreviews(newPreviews);
+    
+    if (newFiles.length === 0) {
+      setMediaType(null);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -300,6 +404,125 @@ export default function FacebookPostPage({ params }: any) {
     }
 
     try {
+      // Handle carousel mode
+      if (isCarousel && carouselFiles.length > 0) {
+        if (carouselFiles.length < 2) {
+          setError('Carousel posts require at least 2 images');
+          setLoading(false);
+          return;
+        }
+
+        setUploading(true);
+        setError("");
+
+        try {
+          const carouselUrls: string[] = [];
+
+          // Process all carousel images
+          for (let i = 0; i < carouselFiles.length; i++) {
+            const file = carouselFiles[i];
+            
+            // Check if this is a recent file (already uploaded)
+            if ((file as any).isRecentFile && (file as any).recentFileUrl) {
+              // Use the existing URL directly - no need to re-upload
+              carouselUrls.push((file as any).recentFileUrl);
+              console.log(`✅ Using recent file ${i + 1}: ${(file as any).recentFileUrl}`);
+            } else if (file.size > 0) {
+              // New file - upload to Supabase
+              const fileExt = file.name.split('.').pop();
+              const fileName = `${Date.now()}-${i}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+              const filePath = `${accountId}/${fileName}`;
+
+              const { data: uploadData, error: uploadError } = await supabase.storage
+                .from('Facebook')
+                .upload(filePath, file, {
+                  cacheControl: '3600',
+                  upsert: false
+                });
+
+              if (uploadError) {
+                throw new Error(`Failed to upload image ${i + 1}: ${uploadError.message}`);
+              }
+
+              const { data: urlData } = supabase.storage
+                .from('Facebook')
+                .getPublicUrl(filePath);
+
+              carouselUrls.push(urlData.publicUrl);
+            } else {
+              throw new Error(`Image ${i + 1} is invalid or empty`);
+            }
+          }
+
+          // Post carousel to backend
+          const postData: any = {
+            message: message || undefined,
+            scheduledPublishTime: scheduledDateTime || undefined,
+            privacy: 'PUBLIC',
+            shareToStory: false,
+            isCarousel: true,
+            carouselUrls: carouselUrls,
+            mediaType: 'photo',
+          };
+
+          const res = await fetch(`/api/facebook/post/${accountId}`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(postData),
+          });
+
+          let result;
+          try {
+            result = await res.json();
+          } catch (jsonErr) {
+            const text = await res.text();
+            throw new Error(`Server error (${res.status}): ${text || 'Unknown error'}`);
+          }
+
+          if (!res.ok) {
+            let errorMsg = result?.error;
+            if (typeof errorMsg === 'object' && errorMsg !== null) {
+              errorMsg = errorMsg.message || errorMsg.error || JSON.stringify(errorMsg);
+            }
+            if (!errorMsg || typeof errorMsg !== 'string') {
+              errorMsg = result?.message || `Failed to post (${res.status})`;
+            }
+            throw new Error(errorMsg);
+          }
+
+          if (result.postId) {
+            const fbPostUrl = `https://www.facebook.com/${result.postId}`;
+            setPostUrl(fbPostUrl);
+            setSuccessMessage(`Carousel post published successfully! Post ID: ${result.postId}`);
+          } else {
+            setSuccessMessage('Carousel post published successfully!');
+          }
+
+          setSuccess(true);
+          
+          // Reload recent files after successful post
+          if (accountId) {
+            loadRecentFiles(accountId);
+          }
+          
+          setTimeout(() => {
+            router.push(`/facebook/${accountId}`);
+          }, 3000);
+        } catch (uploadErr: any) {
+          setUploading(false);
+          setLoading(false);
+          setError(`Carousel upload failed: ${uploadErr.message}`);
+          return;
+        } finally {
+          setUploading(false);
+        }
+        return;
+      }
+
+      // Handle single file mode
       let mediaUrl = "";
       
       if (mediaFile && (mediaFile as any).isRecentFile && (mediaFile as any).recentFileUrl) {
@@ -402,6 +625,12 @@ export default function FacebookPostPage({ params }: any) {
       }
 
       setSuccess(true);
+      
+      // Reload recent files after successful post
+      if (accountId) {
+        loadRecentFiles(accountId);
+      }
+      
       setTimeout(() => {
         router.push(`/facebook/${accountId}`);
       }, 3000);
@@ -471,17 +700,21 @@ export default function FacebookPostPage({ params }: any) {
         {/* Loading Overlay */}
         {(loading || uploading) && (
           <div className="fixed inset-0 z-50 flex items-center justify-center">
-            <div className="absolute inset-0 backdrop-blur-xl bg-background/80"></div>
-            <Card className="relative max-w-md w-full mx-4">
+            {/* Grey transparent overlay */}
+            <div className="absolute inset-0 bg-black/40"></div>
+            {/* Center loading card with white text */}
+            <Card className="relative max-w-md w-full mx-4 bg-neutral-900 text-white border-neutral-700">
               <CardContent className="pt-6">
                 <div className="text-center space-y-6 py-4">
-                  <Loader2 className="h-16 w-16 animate-spin text-primary mx-auto" />
+                  <Loader2 className="h-16 w-16 animate-spin text-white mx-auto" />
                   <div>
-                    <h3 className="text-xl font-semibold text-foreground mb-2">
-                      {uploading ? "Uploading Media..." : "Posting to Facebook..."}
+                    <h3 className="text-xl font-semibold mb-2">
+                      {uploading ? "Uploading media..." : "Posting to Facebook..."}
                     </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {uploading ? "Please wait while we upload your media" : "Please wait while we post your content"}
+                    <p className="text-sm text-neutral-300">
+                      {uploading
+                        ? "Please wait while we upload your photo or video."
+                        : "Please wait while we create your Facebook post."}
                     </p>
                   </div>
                 </div>
@@ -500,25 +733,122 @@ export default function FacebookPostPage({ params }: any) {
                 <CardDescription>Share photos or a video</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Carousel Option */}
+                <div className="flex items-center gap-2 p-3 bg-secondary/50 rounded-lg border border-border">
+                  <Checkbox
+                    id="carousel-option"
+                    checked={isCarousel}
+                    onCheckedChange={(checked) => {
+                      setIsCarousel(checked as boolean);
+                      if (!checked) {
+                        // Clear carousel files when unchecked
+                        setCarouselFiles([]);
+                        setCarouselPreviews([]);
+                        carouselPreviews.forEach(url => {
+                          if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+                        });
+                      } else {
+                        // Clear single file when enabling carousel
+                        setMediaFile(null);
+                        setMediaPreview("");
+                        setMediaType(null);
+                      }
+                    }}
+                  />
+                  <label htmlFor="carousel-option" className="flex items-center gap-2 cursor-pointer flex-1">
+                    <Images className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium">Create carousel post</span>
+                    <span className="text-xs text-muted-foreground">(Multiple images)</span>
+                  </label>
+                </div>
+
                 {/* Recent Uploads */}
                 {recentFiles.length > 0 && (
                   <div>
-                    <Label className="mb-2">Recent Uploads</Label>
+                    <Label className="mb-2">
+                      Recent Uploads
+                      {isCarousel && (
+                        <span className="text-xs text-muted-foreground ml-2">
+                          (Click images to add to carousel)
+                        </span>
+                      )}
+                    </Label>
                     <div className="grid grid-cols-4 gap-2 max-h-32 overflow-y-auto p-2 bg-secondary/50 rounded-lg">
-                      {recentFiles.map((file, idx) => (
-                        <div
-                          key={idx}
-                          onClick={() => useRecentFile(file)}
-                          className="relative cursor-pointer group hover:opacity-80 transition-opacity"
-                          title={file.name}
-                        >
-                          {file.type === 'video' ? (
-                            <VideoThumbnail videoUrl={file.url} fileName={file.name} />
-                          ) : (
-                            <ImageThumbnail imageUrl={file.url} fileName={file.name} />
-                          )}
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 rounded transition-opacity flex items-center justify-center">
-                            <span className="text-white text-xs opacity-0 group-hover:opacity-100">Use</span>
+                      {recentFiles.map((file, idx) => {
+                        // Check if file is already in carousel (for carousel mode)
+                        const isInCarousel = isCarousel && carouselFiles.some(
+                          f => (f as any).recentFileUrl === file.url
+                        );
+                        const canAddToCarousel = isCarousel && file.type === 'photo' && !isInCarousel && carouselFiles.length < 10;
+                        const isDisabled = isCarousel && (file.type !== 'photo' || isInCarousel || carouselFiles.length >= 10);
+
+                        return (
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              if (!isDisabled) {
+                                useRecentFile(file);
+                              }
+                            }}
+                            className={`relative cursor-pointer group transition-opacity ${
+                              isDisabled 
+                                ? 'opacity-50 cursor-not-allowed' 
+                                : 'hover:opacity-80'
+                            } ${isInCarousel ? 'ring-2 ring-primary' : ''}`}
+                            title={isDisabled 
+                              ? isInCarousel 
+                                ? 'Already in carousel' 
+                                : file.type !== 'photo' 
+                                  ? 'Carousel only supports images'
+                                  : 'Maximum 10 images'
+                              : file.name
+                            }
+                          >
+                            {file.type === 'video' ? (
+                              <VideoThumbnail videoUrl={file.url} fileName={file.name} />
+                            ) : (
+                              <ImageThumbnail imageUrl={file.url} fileName={file.name} />
+                            )}
+                            <div className={`absolute inset-0 bg-black/0 group-hover:bg-black/20 rounded transition-opacity flex items-center justify-center ${
+                              isInCarousel ? 'bg-primary/20' : ''
+                            }`}>
+                              <span className="text-white text-xs opacity-0 group-hover:opacity-100">
+                                {isInCarousel ? '✓ Added' : 'Use'}
+                              </span>
+                            </div>
+                            {isInCarousel && (
+                              <div className="absolute top-1 right-1 bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center">
+                                <Check className="h-3 w-3" />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Carousel Preview */}
+                {isCarousel && carouselFiles.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Carousel Images ({carouselFiles.length}/10)</Label>
+                    <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto p-2 bg-secondary/50 rounded-lg">
+                      {carouselPreviews.map((preview, idx) => (
+                        <div key={idx} className="relative group">
+                          <img
+                            src={preview}
+                            alt={`Carousel ${idx + 1}`}
+                            className="w-full h-24 object-cover rounded border border-border"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeCarouselImage(idx)}
+                            className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                          <div className="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-1 rounded">
+                            {idx + 1}
                           </div>
                         </div>
                       ))}
@@ -526,25 +856,28 @@ export default function FacebookPostPage({ params }: any) {
                   </div>
                 )}
                 
-                {!mediaFile ? (
+                {!mediaFile && carouselFiles.length === 0 ? (
                   <div className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-primary/50 transition-colors">
                     <input
                       type="file"
                       id="media-upload"
                       accept="image/*,video/*"
                       onChange={handleMediaChange}
+                      multiple={isCarousel}
                       className="hidden"
                     />
                     <label
                       htmlFor="media-upload"
-                      className="cursor-pointer flex flex-col items-center gap-3"
+                      className="cursor-pointer flex flex-col items-center gap-3 w-full"
                     >
                       <Upload className="w-12 h-12 text-muted-foreground" />
-                      <Button type="button" variant="outline" className="gap-2">
+                      <div className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground rounded-md text-sm font-medium transition-colors">
                         <Upload className="h-4 w-4" />
-                        Choose Photo or Video
-                      </Button>
-                      <p className="text-xs text-muted-foreground">Max 50MB (Supabase Free Tier)</p>
+                        {isCarousel ? 'Choose Multiple Photos' : 'Choose Photo or Video'}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {isCarousel ? 'Select up to 10 images for carousel' : 'Max 50MB (Supabase Free Tier)'}
+                      </p>
                     </label>
                   </div>
                 ) : (
@@ -558,10 +891,14 @@ export default function FacebookPostPage({ params }: any) {
                         <p className="text-sm font-medium text-foreground mb-2">
                           {mediaType === 'video' ? '📹 Video Selected' : '📎 File Selected'}
                         </p>
-                        <p className="text-xs text-muted-foreground mb-2">{mediaFile.name}</p>
-                        <Badge variant="secondary">
-                          Size: {(mediaFile.size / (1024 * 1024)).toFixed(2)}MB
-                        </Badge>
+                        {mediaFile && (
+                          <>
+                            <p className="text-xs text-muted-foreground mb-2">{mediaFile.name}</p>
+                            <Badge variant="secondary">
+                              Size: {(mediaFile.size / (1024 * 1024)).toFixed(2)}MB
+                            </Badge>
+                          </>
+                        )}
                       </div>
                     )}
                     <Button

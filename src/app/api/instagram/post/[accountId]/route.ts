@@ -16,6 +16,8 @@ export async function POST(
 
     const body = await req.json();
 
+    console.log('[Instagram API] Received body:', JSON.stringify(body, null, 2));
+
     // Use NEXT_PUBLIC_API_URL if available, otherwise fallback to other env vars or localhost
     const backendUrl = process.env.NEXT_PUBLIC_API_URL || 
                        process.env.NEXT_PUBLIC_BACKEND_URL || 
@@ -34,6 +36,10 @@ export async function POST(
     
     let response;
     try {
+      // Increase timeout for video processing (10 minutes)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000); // 10 minutes
+      
       response = await fetch(`${cleanBackendUrl}/instagram/post/${accountId}`, {
         method: "POST",
         headers: {
@@ -41,12 +47,28 @@ export async function POST(
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
+        signal: controller.signal,
       });
       
+      clearTimeout(timeoutId);
       console.log(`[Instagram API] Backend response status: ${response.status} ${response.statusText}`);
       console.log(`[Instagram API] Backend response headers:`, Object.fromEntries(response.headers.entries()));
     } catch (fetchError: any) {
       console.error('[Instagram API] Fetch error:', fetchError);
+      
+      // Check if it's a timeout (abort) error
+      if (fetchError.name === 'AbortError') {
+        console.log('[Instagram API] Request timed out - backend may still be processing');
+        return NextResponse.json(
+          { 
+            error: 'Request timed out, but processing may continue in background. Check your posts in a few minutes.',
+            timeout: true,
+            message: 'Video processing takes time. Your post may still be created successfully.'
+          },
+          { status: 202 } // 202 Accepted - processing in background
+        );
+      }
+      
       return NextResponse.json(
         { error: `Failed to connect to backend: ${fetchError.message}. Is the backend running on ${cleanBackendUrl}?` },
         { status: 503 }
@@ -60,7 +82,7 @@ export async function POST(
       console.log(`[Instagram API] Backend response status: ${response.status}, Content-Type: ${response.headers.get('content-type')}`);
       console.log('[Instagram API] Backend response text (first 500 chars):', responseText.substring(0, 500));
       
-      // Check if response is HTML (error page)
+      // Check if response is HTML (error page) or plain text error
       if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
         console.error('[Instagram API] Backend returned HTML instead of JSON - this should not happen!');
         return NextResponse.json(
@@ -69,6 +91,17 @@ export async function POST(
             rawResponse: responseText.substring(0, 500)
           },
           { status: 500 }
+        );
+      }
+      
+      // Check if response is plain text error (like "Internal Server Error")
+      if (!response.ok && (responseText.includes('Internal Server Error') || responseText.includes('Error'))) {
+        console.error('[Instagram API] Backend returned plain text error instead of JSON');
+        return NextResponse.json(
+          { 
+            error: `Backend error (${response.status}): ${responseText.trim().substring(0, 200)}. Check backend logs for details.`
+          },
+          { status: response.status || 500 }
         );
       }
     } catch (textError: any) {

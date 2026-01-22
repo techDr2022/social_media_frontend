@@ -6,7 +6,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Facebook, Check, Loader2, Calendar, ArrowLeft } from "lucide-react";
+import { Facebook, Check, Loader2, Calendar, ArrowLeft, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +23,7 @@ export default function ConnectFacebookPage() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
   const [connecting, setConnecting] = useState(false);
+  const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null);
 
   async function loadAccounts() {
     setLoading(true);
@@ -100,6 +101,54 @@ export default function ConnectFacebookPage() {
       console.error("Facebook connect error", err);
       setStatus("Error connecting Facebook: " + (err.message ?? String(err)));
       setConnecting(false);
+    }
+  }
+
+  async function deleteAccount(accountId: string, accountName: string) {
+    if (!confirm(`Are you sure you want to delete "${accountName}"?\n\nThis will permanently remove the connection and you'll need to reconnect to use this Facebook Page again.`)) {
+      return;
+    }
+
+    setDeletingAccountId(accountId);
+    setStatus("");
+
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) {
+      setStatus("You must be logged in.");
+      setDeletingAccountId(null);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/social-accounts/${accountId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        let errorMessage = "Unknown error";
+        try {
+          const errorData = await res.json();
+          errorMessage = errorData.message || errorData.error || `Failed to delete account (${res.status})`;
+        } catch {
+          const errorText = await res.text().catch(() => "");
+          errorMessage = errorText || `Failed to delete account (${res.status})`;
+        }
+        setStatus(`Failed to delete account: ${errorMessage}`);
+        setDeletingAccountId(null);
+        return;
+      }
+
+      // Reload accounts list
+      await loadAccounts();
+      setStatus(`Successfully deleted "${accountName}"`);
+      setTimeout(() => setStatus(""), 3000);
+    } catch (err: any) {
+      console.error("Delete account error", err);
+      setStatus(`Error deleting account: ${err.message || "Network error"}`);
+    } finally {
+      setDeletingAccountId(null);
     }
   }
 
@@ -219,12 +268,25 @@ export default function ConnectFacebookPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="flex gap-2">
-                      <Link href={`/facebook`} className="flex-1">
+                      <Link href={`/facebook/${acc.id}`} className="flex-1">
                         <Button variant="outline" size="sm" className="w-full gap-2">
                           <Calendar className="h-4 w-4" />
-                          Manage
+                          Manage Page
                         </Button>
                       </Link>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => deleteAccount(acc.id, acc.displayName)}
+                        disabled={deletingAccountId === acc.id}
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/20"
+                      >
+                        {deletingAccountId === acc.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
