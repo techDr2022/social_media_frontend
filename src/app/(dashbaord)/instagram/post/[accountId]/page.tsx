@@ -129,7 +129,7 @@ export default function InstagramPostPage({ params }: any) {
               type: isVideo ? 'video' as const : 'photo' as const,
               size: file.metadata?.size || 0,
               created: file.created_at || file.updated_at || '',
-              status: isProcessing ? 'processing' : 'ready',
+              status: (isProcessing ? 'processing' : 'ready') as 'processing' | 'ready',
               progress: undefined,
             };
           })
