@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Instagram, Facebook, Youtube, Clock, MoreHorizontal, Calendar, StopCircle, Loader2 } from "lucide-react";
+import { Instagram, Facebook, Youtube, MapPin, Clock, MoreHorizontal, Calendar, StopCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -20,22 +20,27 @@ const platformIcons = {
   instagram: Instagram,
   facebook: Facebook,
   youtube: Youtube,
+  gmb: MapPin,
 };
 
 const platformColors = {
   instagram: "text-pink-500",
   facebook: "text-blue-500",
   youtube: "text-red-500",
+  gmb: "text-green-500",
 };
 
 interface Post {
   id: string;
-  platform: "instagram" | "facebook" | "youtube";
+  platform: "instagram" | "facebook" | "youtube" | "gmb";
   caption: string;
   scheduledTime: string;
   status: "scheduled" | "draft" | "published" | "pending" | "success";
   image?: string;
   scheduledAt: string;
+  locationName?: string;
+  gmbLocationId?: string;
+  gmbAccountId?: string;
 }
 
 export function UpcomingPosts() {
@@ -57,12 +62,22 @@ export function UpcomingPosts() {
           return;
         }
 
-        const res = await fetch("/api/scheduled-posts", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const [postsRes, gmbRes] = await Promise.all([
+          fetch("/api/scheduled-posts", { headers: { Authorization: `Bearer ${token}` } }),
+          fetch("/api/gmb/posts/scheduled", { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
 
-        if (res.ok) {
-          const scheduledPosts = await res.json();
+        let scheduledPosts: any[] = [];
+        if (postsRes.ok) {
+          scheduledPosts = await postsRes.json();
+        }
+
+        let gmbPosts: any[] = [];
+        if (gmbRes.ok) {
+          gmbPosts = await gmbRes.json();
+        }
+
+        if (postsRes.ok || gmbRes.ok) {
           
           // Transform backend data to component format
           const transformedPosts: Post[] = scheduledPosts
@@ -137,7 +152,38 @@ export function UpcomingPosts() {
               new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
             );
 
-          setPosts(transformedPosts);
+          const gmbTransformed: Post[] = (Array.isArray(gmbPosts) ? gmbPosts : []).map((p: any) => {
+            const d = new Date(p.scheduledAt);
+            const now = new Date();
+            const todayStr = now.toDateString();
+            const tomorrowStr = new Date(now.getTime() + 86400000).toDateString();
+            let scheduledTime = "";
+            if (d.toDateString() === todayStr) {
+              scheduledTime = `Today, ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+            } else if (d.toDateString() === tomorrowStr) {
+              scheduledTime = `Tomorrow, ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+            } else {
+              scheduledTime = d.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+            }
+            return {
+              id: p.id,
+              platform: "gmb",
+              caption: p.content?.slice(0, 50) + (p.content?.length > 50 ? "…" : "") || "GMB post",
+              scheduledTime,
+              status: "scheduled" as const,
+              image: p.imageUrl,
+              scheduledAt: p.scheduledAt,
+              locationName: p.location?.name,
+              gmbLocationId: p.locationId,
+              gmbAccountId: p.location?.socialAccountId,
+            };
+          });
+
+          const merged = [...transformedPosts, ...gmbTransformed]
+            .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+            .slice(0, 5);
+
+          setPosts(merged);
         }
       } catch (err) {
         console.error("Failed to load scheduled posts:", err);
@@ -190,7 +236,10 @@ export function UpcomingPosts() {
 
     setDeleteLoadingId(post.id);
     try {
-      const res = await fetch(`/api/scheduled-posts/${post.id}`, {
+      const url = post.platform === "gmb"
+        ? `/api/gmb/posts/${post.id}`
+        : `/api/scheduled-posts/${post.id}`;
+      const res = await fetch(url, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -385,10 +434,18 @@ export function UpcomingPosts() {
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="bg-popover border-border">
-                      <DropdownMenuItem onClick={() => { setReschedulePost(post); setRescheduleAt(new Date(post.scheduledAt).toISOString().slice(0, 16)); }}>
-                        Reschedule
-                      </DropdownMenuItem>
+                    <DropdownMenuContent align="end" className="z-[9999] bg-popover border-border dark:bg-zinc-950 dark:border-zinc-800">
+                      {post.platform === "gmb" && post.gmbAccountId && post.gmbLocationId ? (
+                        <DropdownMenuItem asChild>
+                          <Link href={`/gmb/${post.gmbAccountId}/locations/${post.gmbLocationId}`}>
+                            View location
+                          </Link>
+                        </DropdownMenuItem>
+                      ) : (
+                        <DropdownMenuItem onClick={() => { setReschedulePost(post); setRescheduleAt(new Date(post.scheduledAt).toISOString().slice(0, 16)); }}>
+                          Reschedule
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem
                         className="text-destructive"
                         onClick={() => handleDelete(post)}

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Instagram, Facebook, Youtube, ArrowRight } from "lucide-react";
+import { Instagram, Facebook, Youtube, Building2, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function ConnectPage() {
@@ -34,6 +34,14 @@ export default function ConnectPage() {
       hoverColor: "hover:border-red-500/50",
       route: "/connect/youtube",
     },
+    {
+      name: "Google My Business",
+      description: "Connect your Google My Business locations",
+      icon: Building2,
+      color: "from-blue-500 to-blue-600",
+      hoverColor: "hover:border-blue-500/50",
+      route: "/connect/gmb",
+    },
   ];
 
   return (
@@ -42,7 +50,7 @@ export default function ConnectPage() {
       subtitle="Connect your social media accounts to start posting content"
     >
       <div className="max-w-5xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {platforms.map((platform) => {
             const Icon = platform.icon;
             return (

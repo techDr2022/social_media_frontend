@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Instagram, Facebook, Youtube, Plus, Check } from "lucide-react";
+import { Instagram, Facebook, Youtube, Building2, Plus, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -11,12 +11,14 @@ const platformIcons: Record<string, any> = {
   instagram: Instagram,
   facebook: Facebook,
   youtube: Youtube,
+  gmb: Building2,
 };
 
 const platformColors: Record<string, string> = {
   instagram: "from-pink-500 to-purple-500",
   facebook: "from-blue-500 to-blue-600",
   youtube: "from-red-500 to-red-600",
+  gmb: "from-blue-500 to-blue-600",
 };
 
 interface SocialAccount {
@@ -59,8 +61,8 @@ export function ConnectedAccounts() {
             }
           });
 
-          // Get all available platforms (instagram, facebook, youtube)
-          const allPlatforms = ["instagram", "facebook", "youtube"];
+          // Get all available platforms (instagram, facebook, youtube, gmb)
+          const allPlatforms = ["instagram", "facebook", "youtube", "gmb"];
           const accountsList = allPlatforms.map(platform => {
             const account = platformMap.get(platform);
             return {

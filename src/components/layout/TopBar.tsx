@@ -54,14 +54,23 @@ export function TopBar({ title, subtitle }: TopBarProps) {
   // Ref to clear polling when we get 401 (e.g. token expired)
   const unreadCountIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Fetch unread count
+  // Store access_token in ref to avoid recreating callback
+  const accessTokenRef = useRef<string | undefined>(session?.access_token);
+  
+  // Update ref when token changes
+  useEffect(() => {
+    accessTokenRef.current = session?.access_token;
+  }, [session?.access_token]);
+
+  // Fetch unread count - use ref to avoid dependency issues
   const fetchUnreadCount = useCallback(async () => {
-    if (!session?.access_token) return;
+    const token = accessTokenRef.current;
+    if (!token) return;
 
     try {
       const response = await fetch("/api/alerts/unread-count", {
         headers: {
-          Authorization: `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${token}`,
         },
       });
 
@@ -81,7 +90,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
     } catch (error) {
       console.error("Failed to fetch unread count:", error);
     }
-  }, [session]);
+  }, []); // No dependencies - uses ref instead
 
   // Fetch alerts
   const fetchAlerts = useCallback(async (cursor?: string | null, append = false) => {
@@ -180,17 +189,32 @@ export function TopBar({ title, subtitle }: TopBarProps) {
 
   // Fetch unread count only when logged in; poll every 30s; stop on 401
   useEffect(() => {
-    if (!session?.access_token) return;
+    const token = session?.access_token;
+    if (!token) {
+      // Clear interval if no token
+      if (unreadCountIntervalRef.current) {
+        clearInterval(unreadCountIntervalRef.current);
+        unreadCountIntervalRef.current = null;
+      }
+      setUnreadCount(0);
+      return;
+    }
 
+    // Initial fetch
     fetchUnreadCount();
-    unreadCountIntervalRef.current = setInterval(fetchUnreadCount, 30000);
+    
+    // Set up polling every 30 seconds (not every render!)
+    unreadCountIntervalRef.current = setInterval(() => {
+      fetchUnreadCount();
+    }, 30000);
+    
     return () => {
       if (unreadCountIntervalRef.current) {
         clearInterval(unreadCountIntervalRef.current);
         unreadCountIntervalRef.current = null;
       }
     };
-  }, [session?.access_token, fetchUnreadCount]);
+  }, [session?.access_token, fetchUnreadCount]); // Fixed length (2) so array size never changes; fetchUnreadCount is stable ([] deps)
 
   const handleLogout = async () => {
     await supabase.auth.signOut();

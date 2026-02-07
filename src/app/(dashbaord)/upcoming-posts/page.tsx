@@ -10,6 +10,7 @@ import {
   Instagram, 
   Facebook, 
   Youtube, 
+  MapPin,
   Clock, 
   MoreHorizontal, 
   Calendar,
@@ -31,27 +32,43 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useRouter } from "next/navigation";
 
-const platformIcons = {
+import Link from "next/link";
+
+const PLATFORM_KEYS = ["all", "instagram", "facebook", "youtube", "gmb"] as const;
+type PlatformFilter = (typeof PLATFORM_KEYS)[number];
+
+const platformIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   instagram: Instagram,
   facebook: Facebook,
   youtube: Youtube,
+  gmb: MapPin,
 };
 
 const platformColors = {
   instagram: "text-pink-500",
   facebook: "text-blue-500",
   youtube: "text-red-500",
+  gmb: "text-green-500",
 };
 
 const platformBgColors = {
   instagram: "bg-pink-500/10 border-pink-500/20",
   facebook: "bg-blue-500/10 border-blue-500/20",
   youtube: "bg-red-500/10 border-red-500/20",
+  gmb: "bg-green-500/10 border-green-500/20",
+};
+
+const platformLabels: Record<string, string> = {
+  all: "All",
+  instagram: "Instagram",
+  facebook: "Facebook",
+  youtube: "YouTube",
+  gmb: "GMB",
 };
 
 interface Post {
   id: string;
-  platform: "instagram" | "facebook" | "youtube";
+  platform: "instagram" | "facebook" | "youtube" | "gmb";
   caption: string;
   scheduledTime: string;
   status: "scheduled" | "draft" | "published" | "pending" | "success";
@@ -63,6 +80,8 @@ interface Post {
     displayName?: string;
     username?: string;
   };
+  gmbLocationId?: string;
+  gmbAccountId?: string;
 }
 
 export default function UpcomingPostsPage() {
@@ -74,6 +93,7 @@ export default function UpcomingPostsPage() {
   const [rescheduleLoading, setRescheduleLoading] = useState(false);
   const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
   const [cancelLoadingId, setCancelLoadingId] = useState<string | null>(null);
+  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
 
   const loadScheduledPosts = useCallback(async () => {
     try {
@@ -85,12 +105,21 @@ export default function UpcomingPostsPage() {
         return;
       }
 
-      const res = await fetch("/api/scheduled-posts", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const [postsRes, gmbRes] = await Promise.all([
+        fetch("/api/scheduled-posts", { headers: { Authorization: `Bearer ${token}` } }),
+        fetch("/api/gmb/posts/scheduled", { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
 
-      if (res.ok) {
-        const scheduledPosts = await res.json();
+      let scheduledPosts: any[] = [];
+      if (postsRes.ok) {
+        scheduledPosts = await postsRes.json();
+      }
+      let gmbPosts: any[] = [];
+      if (gmbRes.ok) {
+        gmbPosts = await gmbRes.json();
+      }
+
+      if (postsRes.ok || gmbRes.ok) {
         
         // Deduplicate posts by ID first
         const uniquePostsMap = new Map<string, any>();
@@ -177,7 +206,36 @@ export default function UpcomingPostsPage() {
             new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
           );
 
-        setPosts(transformedPosts);
+        const gmbTransformed: Post[] = (Array.isArray(gmbPosts) ? gmbPosts : []).map((p: any) => {
+          const d = new Date(p.scheduledAt);
+          const now = new Date();
+          let scheduledTime = "";
+          if (d.toDateString() === now.toDateString()) {
+            scheduledTime = `Today, ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+          } else if (d.toDateString() === new Date(now.getTime() + 86400000).toDateString()) {
+            scheduledTime = `Tomorrow, ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+          } else {
+            scheduledTime = d.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+          }
+          return {
+            id: p.id,
+            platform: "gmb",
+            caption: p.content?.slice(0, 80) + (p.content?.length > 80 ? "…" : "") || "GMB post",
+            content: p.content || "GMB post",
+            scheduledTime,
+            status: "scheduled" as const,
+            image: p.imageUrl,
+            mediaUrl: p.imageUrl,
+            scheduledAt: p.scheduledAt,
+            gmbLocationId: p.locationId,
+            gmbAccountId: p.location?.socialAccountId,
+          };
+        });
+
+        const merged = [...transformedPosts, ...gmbTransformed]
+          .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+
+        setPosts(merged);
       }
     } catch (err) {
       console.error("Failed to load scheduled posts:", err);
@@ -247,7 +305,10 @@ export default function UpcomingPostsPage() {
 
     setDeleteLoadingId(post.id);
     try {
-      const res = await fetch(`/api/scheduled-posts/${post.id}`, {
+      const url = post.platform === "gmb"
+        ? `/api/gmb/posts/${post.id}`
+        : `/api/scheduled-posts/${post.id}`;
+      const res = await fetch(url, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -317,7 +378,9 @@ export default function UpcomingPostsPage() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold">
-              {posts.length} Upcoming Post{posts.length !== 1 ? "s" : ""}
+              {platformFilter === "all"
+                ? `${posts.length} Upcoming Post${posts.length !== 1 ? "s" : ""}`
+                : `${posts.filter((p) => p.platform === platformFilter).length} ${platformLabels[platformFilter]} Post${posts.filter((p) => p.platform === platformFilter).length !== 1 ? "s" : ""}`}
             </h2>
             <p className="text-muted-foreground mt-1">
               Posts are sorted by earliest scheduled time first
@@ -329,14 +392,44 @@ export default function UpcomingPostsPage() {
           </Button>
         </div>
 
+        {/* Platform filter pills */}
+        <div className="flex flex-wrap gap-2">
+          {PLATFORM_KEYS.map((key) => {
+            const Icon = key === "all" ? null : platformIcons[key];
+            const count = key === "all" ? posts.length : posts.filter((p) => p.platform === key).length;
+            const active = platformFilter === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setPlatformFilter(key)}
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
+                  active ? "border-blue-500 bg-blue-500 text-white" : "border-border bg-background hover:bg-muted/50"
+                )}
+              >
+                {Icon && <Icon className="h-3.5 w-3.5" />}
+                <span>{platformLabels[key]}</span>
+                <span className="text-xs opacity-80">({count})</span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Posts List */}
-        {posts.length === 0 ? (
+        {(() => {
+          const filteredPosts = platformFilter === "all" ? posts : posts.filter((p) => p.platform === platformFilter);
+          return filteredPosts.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-16">
               <Calendar className="h-16 w-16 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No Upcoming Scheduled Posts</h3>
+              <h3 className="text-lg font-semibold mb-2">
+                {platformFilter === "all" ? "No Upcoming Scheduled Posts" : `No upcoming posts for ${platformLabels[platformFilter]}`}
+              </h3>
               <p className="text-muted-foreground text-center mb-6">
-                You don't have any posts scheduled yet. Create your first post to get started!
+                {platformFilter === "all"
+                  ? "You don't have any posts scheduled yet. Create your first post to get started!"
+                  : `No scheduled posts for ${platformLabels[platformFilter]} yet. Try another filter or create a post.`}
               </p>
               <Button onClick={() => router.push("/create-post")} className="gap-2">
                 <Plus className="h-4 w-4" />
@@ -346,7 +439,7 @@ export default function UpcomingPostsPage() {
           </Card>
         ) : (
           <div className="space-y-4">
-            {posts.map((post) => {
+            {filteredPosts.map((post) => {
               const PlatformIcon = platformIcons[post.platform];
               const platformColor = platformColors[post.platform];
               const platformBg = platformBgColors[post.platform];
@@ -414,9 +507,16 @@ export default function UpcomingPostsPage() {
                                   <MoreHorizontal className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                {/* Reschedule - Only for Instagram pending posts */}
-                                {post.platform === "instagram" && post.status === "pending" ? (
+                              <DropdownMenuContent align="end" className="z-[9999] dark:bg-zinc-950 dark:border-zinc-800">
+                                {/* GMB: View location; Others: Reschedule (Instagram only) */}
+                                {post.platform === "gmb" && post.gmbAccountId && post.gmbLocationId ? (
+                                  <DropdownMenuItem asChild>
+                                    <Link href={`/gmb/${post.gmbAccountId}/locations/${post.gmbLocationId}`}>
+                                      <Edit className="h-4 w-4 mr-2" />
+                                      View location
+                                    </Link>
+                                  </DropdownMenuItem>
+                                ) : post.platform === "instagram" && post.status === "pending" ? (
                                   <DropdownMenuItem
                                     onClick={() => {
                                       const date = new Date(post.scheduledAt);
@@ -427,7 +527,7 @@ export default function UpcomingPostsPage() {
                                     <Edit className="h-4 w-4 mr-2" />
                                     Reschedule
                                   </DropdownMenuItem>
-                                ) : (
+                                ) : post.platform !== "gmb" ? (
                                   <DropdownMenuItem
                                     disabled
                                     className="opacity-50 cursor-not-allowed"
@@ -435,7 +535,7 @@ export default function UpcomingPostsPage() {
                                     <Edit className="h-4 w-4 mr-2" />
                                     Reschedule (Not available)
                                   </DropdownMenuItem>
-                                )}
+                                ) : null}
                                 
                                 {/* Delete - Not available for YouTube scheduled posts */}
                                 {post.platform === "youtube" && post.status === "success" ? (
@@ -501,7 +601,8 @@ export default function UpcomingPostsPage() {
               );
             })}
           </div>
-        )}
+        );
+        })()}
 
         {/* Reschedule Modal */}
         {reschedulePost && (

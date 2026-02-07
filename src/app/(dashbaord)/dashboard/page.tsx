@@ -43,25 +43,29 @@ export default function DashboardPage() {
           accounts = await accountsRes.json();
         }
 
-        // Fetch scheduled posts
-        const postsRes = await fetch("/api/scheduled-posts", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        // Fetch scheduled posts and GMB scheduled posts
+        const [postsRes, gmbRes] = await Promise.all([
+          fetch("/api/scheduled-posts", { headers: { Authorization: `Bearer ${token}` } }),
+          fetch("/api/gmb/posts/scheduled", { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
 
         let allPosts: any[] = [];
         let scheduledCount = 0;
         let postedCount = 0;
         if (postsRes.ok) {
           allPosts = await postsRes.json();
-          // Count scheduled and posted
           allPosts.forEach((post: any) => {
-            if (post.status === "scheduled" || post.status === "pending" || 
+            if (post.status === "scheduled" || post.status === "pending" ||
                 (post.scheduledAt && new Date(post.scheduledAt) > new Date())) {
               scheduledCount++;
             } else if (post.status === "success" || post.postedAt) {
               postedCount++;
             }
           });
+        }
+        if (gmbRes.ok) {
+          const gmbPosts = await gmbRes.json();
+          scheduledCount += Array.isArray(gmbPosts) ? gmbPosts.length : 0;
         }
 
         setStats({
