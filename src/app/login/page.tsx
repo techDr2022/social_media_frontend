@@ -7,6 +7,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import Link from "next/link";
 import { Mail, Lock, Sparkles, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -317,6 +318,13 @@ export default function LoginPage() {
           )}
         </CardContent>
       </Card>
+
+      <p className="relative mt-6 text-center text-sm text-muted-foreground">
+        By signing in, you agree to our{" "}
+        <Link href="/terms" className="text-primary hover:underline">Terms of Service</Link>
+        {" "}and{" "}
+        <Link href="/privacy" className="text-primary hover:underline">Privacy Policy</Link>.
+      </p>
     </div>
   );
 }

@@ -290,6 +290,12 @@ function HomeContent() {
               </Link>
             </CardContent>
           </Card>
+
+          <p className="mt-8 text-center text-sm text-muted-foreground">
+            <Link href="/terms" className="text-primary hover:underline">Terms of Service</Link>
+            {" · "}
+            <Link href="/privacy" className="text-primary hover:underline">Privacy Policy</Link>
+          </p>
         </div>
       </div>
     </div>
